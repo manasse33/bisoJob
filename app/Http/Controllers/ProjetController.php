@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project as Projet;
+use App\Models\Utilisateur as User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use App\Services\NotificationService;
 
 class ProjetController extends Controller
 {
@@ -103,7 +105,19 @@ class ProjetController extends Controller
             'statut' => 'ouvert',
         ]);
 
-        
+         $freelanceCategory = $projet->categorie;
+        $freelancers = User::where('type_utilisateur', 'freelance')
+            ->whereHas('competences', fn($q) => $q->where('categorie', $freelanceCategory))
+            ->limit(50)
+            ->pluck('id');
+
+        NotificationService::create($freelancers->toArray(),
+            "Nouveau projet disponible: {$projet->titre}",
+            "Un nouveau projet dans votre domaine de compétence a été publié",
+            'projet',
+            ['project_id' => $projet->id]
+        );
+
 
         return response()->json([
             'success' => true,
