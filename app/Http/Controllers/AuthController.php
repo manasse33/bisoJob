@@ -251,16 +251,16 @@ class AuthController extends Controller
         }
 
         // VÉRIFIER SI L'EMAIL EST VÉRIFIÉ
-        if (!$user->hasVerifiedEmail()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Veuillez vérifier votre email avant de vous connecter. Un email de vérification a été envoyé à votre adresse.',
-                'data' => [
-                    'email_verified' => false,
-                    'email' => $user->email
-                ]
-            ], 403);
-        }
+        // if (!$user->hasVerifiedEmail()) {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Veuillez vérifier votre email avant de vous connecter. Un email de vérification a été envoyé à votre adresse.',
+        //         'data' => [
+        //             'email_verified' => false,
+        //             'email' => $user->email
+        //         ]
+        //     ], 403);
+        // }
 
         if ($user->statut !== 'actif') {
             return response()->json([

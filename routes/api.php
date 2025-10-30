@@ -36,7 +36,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
-Route::post('/resend-verification', [AuthController::class, 'resendVerificationEmail']);
+    Route::post('/resend-verification-email', [AuthController::class, 'resendVerificationEmail']);
     
     // Freelances (lecture publique)
     Route::get('/freelances', [FreelanceController::class, 'index']);
