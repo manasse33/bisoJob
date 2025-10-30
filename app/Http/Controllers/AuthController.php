@@ -79,7 +79,7 @@ class AuthController extends Controller
             $frontendUrl = config('app.frontend_url');
             $verificationUrl = "{$frontendUrl}/verify-email?token={$verificationToken}&email={$user->email}";
             
-            $user->notify(new VerifyEmailNotification($verificationUrl));
+              $user->notify((new VerifyEmailNotification($verificationUrl))->delay(now()->addSeconds(5)));
 
             DB::commit();
 
