@@ -105,18 +105,18 @@ class ProjetController extends Controller
             'statut' => 'ouvert',
         ]);
 
-         $freelanceCategory = $projet->categorie;
-        $freelancers = User::where('type_utilisateur', 'freelance')
-            ->whereHas('competences', fn($q) => $q->where('categorie', $freelanceCategory))
-            ->limit(50)
-            ->pluck('id');
+        //  $freelanceCategory = $projet->categorie;
+        // $freelancers = User::where('type_utilisateur', 'freelance')
+        //     ->whereHas('competences', fn($q) => $q->where('categorie', $freelanceCategory))
+        //     ->limit(50)
+        //     ->pluck('id');
 
-        NotificationService::create($freelancers->toArray(),
-            "Nouveau projet disponible: {$projet->titre}",
-            "Un nouveau projet dans votre domaine de compétence a été publié",
-            'projet',
-            ['project_id' => $projet->id]
-        );
+        // NotificationService::create($freelancers->toArray(),
+        //     "Nouveau projet disponible: {$projet->titre}",
+        //     "Un nouveau projet dans votre domaine de compétence a été publié",
+        //     'projet',
+        //     ['project_id' => $projet->id]
+        // );
 
 
         return response()->json([
