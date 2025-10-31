@@ -12,14 +12,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Log;
+
 class AuthController extends Controller
 {
     /**
      * Inscription avec envoi d'email de vérification
      */
-   public function register(Request $request)
+    public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'nom' => 'required|string|max:100',
@@ -44,11 +43,6 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = null; // Déclarer $user en dehors du try pour la portée
-        $verificationToken = null;
-        $emailMessage = 'Inscription réussie ! Un email de vérification a été envoyé. Veuillez vérifier votre boîte de réception (et vos spams).';
-
-        // --- Début de la transaction pour la création de l'utilisateur ---
         try {
             DB::beginTransaction();
 
@@ -81,63 +75,36 @@ class AuthController extends Controller
                 ]);
             }
 
-            // 🛑 COMMIT ICI : L'utilisateur est créé dans la BDD.
+            // Envoyer l'email de vérification
+            $frontendUrl = config('app.frontend_url');
+            $verificationUrl = "{$frontendUrl}/verify-email?token={$verificationToken}&email={$user->email}";
+            
+            $user->notify(new VerifyEmailNotification($verificationUrl));
+
             DB::commit();
 
-            // --- Envoi de l'email ASYNCHRONE (via la queue) ---
-            // 💡 OPTIMISATION : ENVOYER UNIQUEMENT APRÈS LE SUCCÈS DE LA TRANSACTION (afterCommit)
-            DB::afterCommit(function () use ($user, $verificationToken) {
-                try {
-                    $frontendUrl = config('app.frontend_url');
-                    $verificationUrl = "{$frontendUrl}/verify-email?token={$verificationToken}&email={$user->email}";
+            // Créer le token d'authentification
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-                    Log::info("Tentative de mise en file d'attente (asynchrone) pour l'utilisateur ID: {$user->id}");
-
-                    // Envoi sur la queue de haute priorité
-                    $notification = (new VerifyEmailNotification($verificationUrl))->onQueue('high');
-                    $user->notify($notification);
-
-                    Log::info("Email de vérification mis en file d'attente AVEC SUCCÈS sur la queue 'high' pour l'utilisateur ID: {$user->id}");
-
-                } catch (\Exception $e) {
-                    // Cette erreur est capturée si la file d'attente (jobs table) échoue.
-                    Log::error('ERREUR LORS DE LA MISE EN QUEUE DE L\'EMAIL pour ID ' . $user->id . ': ' . $e->getMessage());
-                    // Le message d'erreur est géré ci-dessous
-                }
-            });
-
+            return response()->json([
+                'success' => true,
+                'message' => 'Inscription réussie ! Un email de vérification a été envoyé.',
+                'data' => [
+                    'user' => $user->load('freelance'),
+                    'token' => $token,
+                    'token_type' => 'Bearer',
+                    'email_verified' => false,
+                ]
+            ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Erreur lors de l\'inscription: ' . $e->getMessage());
-            
-            // Si l'erreur est liée à la queue APRES le commit, cela ne passera pas ici. 
-            // Ce bloc gère les erreurs de validation ou de DB.
-            $emailMessage = 'Erreur critique lors de l\'inscription. Veuillez réessayer.';
 
             return response()->json([
                 'success' => false,
-                'message' => $emailMessage,
-                'error_detail' => $e->getMessage()
+                'message' => 'Erreur lors de l\'inscription : ' . $e->getMessage()
             ], 500);
         }
-
-        // --- Réponse finale ---
-
-        // Créer le token d'authentification
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'message' => $emailMessage,
-            'data' => [
-                'user' => $user->load('freelance'),
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'email_queued' => true, // Statut explicite pour le front-end
-                'email_verified' => false,
-            ]
-        ], 201);
     }
 
     /**
