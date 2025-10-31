@@ -206,21 +206,21 @@ class AuthController extends Controller
         $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
         $verificationUrl = "{$frontendUrl}/verify-email?token={$verificationToken}&email={$user->email}";
         
-        try {
-            $user->notify(new VerifyEmailNotification($verificationUrl));
+        // try {
+        //     $user->notify(new VerifyEmailNotification($verificationUrl));
             
-            return response()->json([
-                'success' => true,
-                'message' => 'Email de vérification renvoyé avec succès. Vérifiez votre boîte mail.'
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Erreur envoi email: ' . $e->getMessage());
+        //     return response()->json([
+        //         'success' => true,
+        //         'message' => 'Email de vérification renvoyé avec succès. Vérifiez votre boîte mail.'
+        //     ]);
+        // } catch (\Exception $e) {
+        //     \Log::error('Erreur envoi email: ' . $e->getMessage());
             
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.'
-            ], 500);
-        }
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.'
+        //     ], 500);
+        // }
     }
 
     /**
