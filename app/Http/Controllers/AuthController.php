@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log; // Ajout pour le logging sécurisé
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -23,6 +24,7 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'nom' => 'required|string|max:100',
             'prenom' => 'required|string|max:100',
+            // Assurez-vous que 'utilisateurs' est le nom correct de votre table
             'email' => 'required|email|unique:utilisateurs,email',
             'telephone' => 'required|string|max:20',
             'whatsapp' => 'nullable|string|max:20',
@@ -40,7 +42,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'errors' => $validator->errors()
-            ], 422);
+            ], 422); // 422 Unprocessable Entity pour les erreurs de validation
         }
 
         try {
@@ -95,15 +97,17 @@ class AuthController extends Controller
                     'token_type' => 'Bearer',
                     'email_verified' => false,
                 ]
-            ], 201);
+            ], 201); // 201 Created pour une ressource créée
 
         } catch (\Exception $e) {
             DB::rollBack();
-
+            Log::error("Erreur lors de l'inscription de l'utilisateur {$request->email}: " . $e->getMessage()); // 💡 Correction : log l'erreur
+            
+            //  Correction de Sécurité : Ne pas exposer l'erreur interne
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'inscription : ' . $e->getMessage()
-            ], 500);
+                'message' => 'Une erreur interne est survenue lors de l\'inscription. Veuillez réessayer.',
+            ], 500); // 500 Internal Server Error
         }
     }
 
@@ -125,7 +129,6 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Chercher d'abord par email
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
@@ -141,7 +144,7 @@ class AuthController extends Controller
                 'success' => true,
                 'message' => 'Votre email est déjà vérifié. Vous pouvez vous connecter.',
                 'data' => ['already_verified' => true]
-            ]);
+            ], 200);
         }
 
         // Vérifier le token seulement si l'email n'est pas encore vérifié
@@ -162,7 +165,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Email vérifié avec succès ! Vous pouvez maintenant vous connecter.',
             'data' => ['email_verified' => true]
-        ]);
+        ], 200);
     }
 
     /**
@@ -206,21 +209,21 @@ class AuthController extends Controller
         $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
         $verificationUrl = "{$frontendUrl}/verify-email?token={$verificationToken}&email={$user->email}";
         
-        // try {
-        //     $user->notify(new VerifyEmailNotification($verificationUrl));
+        try {
+            $user->notify(new VerifyEmailNotification($verificationUrl));
             
-        //     return response()->json([
-        //         'success' => true,
-        //         'message' => 'Email de vérification renvoyé avec succès. Vérifiez votre boîte mail.'
-        //     ]);
-        // } catch (\Exception $e) {
-        //     \Log::error('Erreur envoi email: ' . $e->getMessage());
+            return response()->json([
+                'success' => true,
+                'message' => 'Email de vérification renvoyé avec succès. Vérifiez votre boîte mail.'
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Erreur envoi email de vérification pour ' . $user->email . ': ' . $e->getMessage()); // 💡 Correction : log l'erreur
             
-        //     return response()->json([
-        //         'success' => false,
-        //         'message' => 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.'
-        //     ], 500);
-        // }
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'envoi de l\'email. Veuillez réessayer plus tard.'
+            ], 500);
+        }
     }
 
     /**
@@ -243,30 +246,33 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
+        //  Correction : Utiliser un message générique pour les identifiants
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Email ou mot de passe incorrect'
-            ], 401);
+                'message' => 'Identifiants (Email ou mot de passe) incorrects.'
+            ], 401); // 401 Unauthorized
         }
 
-        // VÉRIFIER SI L'EMAIL EST VÉRIFIÉ
-        // if (!$user->hasVerifiedEmail()) {
-        //     return response()->json([
-        //         'success' => false,
-        //         'message' => 'Veuillez vérifier votre email avant de vous connecter. Un email de vérification a été envoyé à votre adresse.',
-        //         'data' => [
-        //             'email_verified' => false,
-        //             'email' => $user->email
-        //         ]
-        //     ], 403);
-        // }
+        //  Précision : La vérification d'email est commentée. Je vous recommande de la réactiver.
+        /*
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Veuillez vérifier votre email avant de vous connecter.',
+                'data' => [
+                    'email_verified' => false,
+                    'email' => $user->email
+                ]
+            ], 403); // 403 Forbidden
+        }
+        */
 
         if ($user->statut !== 'actif') {
             return response()->json([
                 'success' => false,
                 'message' => 'Votre compte est ' . $user->statut
-            ], 403);
+            ], 403); // 403 Forbidden
         }
 
         // Mettre à jour la dernière connexion
@@ -280,15 +286,14 @@ class AuthController extends Controller
             'message' => 'Connexion réussie',
             'data' => [
                 'user' => $user->load([
-    'freelance.competences',
-    'freelance.portofolios'
-]),
-
+                    'freelance.competences',
+                    'freelance.portofolios'
+                ]),
                 'token' => $token,
                 'token_type' => 'Bearer',
-                'email_verified' => true,
+                'email_verified' => $user->hasVerifiedEmail(), // Utiliser la vraie méthode
             ]
-        ]);
+        ], 200);
     }
 
     /**
@@ -301,30 +306,28 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Déconnexion réussie'
-        ]);
+        ], 200);
     }
 
     /**
-     * Utilisateur connecté
+     * Utilisateur connecté (Me)
+     *  Correction de Sécurité : Récupère l'utilisateur actuellement authentifié.
      */
-    public function me($id)
+    public function me(Request $request)
     {
-        $user = User::with([
+        //  Correction : Utiliser $request->user() pour obtenir l'utilisateur connecté
+        $user = $request->user()->load([
             'freelance.competences',
             'freelance.portofolios',
-        ])->find($id);
-
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Utilisateur introuvable',
-            ], 404);
-        }
-
+        ]);
+        
+        // Note: La route /user/profile/{id} devrait être changée en /user/profile
+        // si vous utilisez $request->user() sans paramètre d'ID.
+        
         return response()->json([
             'success' => true,
             'data' => $user,
-        ]);
+        ], 200);
     }
 
     /**
@@ -337,11 +340,13 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'nom' => 'sometimes|string|max:100',
             'prenom' => 'sometimes|string|max:100',
+            // L'email ne peut pas être changé facilement sans revérification, donc il est omis
             'telephone' => 'sometimes|string|max:20',
             'whatsapp' => 'nullable|string|max:20',
             'ville' => 'nullable|string|max:100',
             'adresse' => 'nullable|string',
-            'photo_profil' => 'nullable|image|max:2048',
+            // Sécurité : valider que l'image est bien une image
+            'photo_profil' => 'nullable|image|max:2048', 
         ]);
 
         if ($validator->fails()) {
@@ -354,6 +359,7 @@ class AuthController extends Controller
         $data = $request->only(['nom', 'prenom', 'telephone', 'whatsapp', 'ville', 'adresse']);
 
         if ($request->hasFile('photo_profil')) {
+            // TODO: Ajouter la suppression de l'ancienne photo si elle existe
             $path = $request->file('photo_profil')->store('profils', 'public');
             $data['photo_profil'] = $path;
         }
@@ -364,7 +370,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Profil mis à jour avec succès',
             'data' => $user->fresh()->load('freelance')
-        ]);
+        ], 200);
     }
 
     /**
@@ -389,8 +395,9 @@ class AuthController extends Controller
         if (!Hash::check($request->current_password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Mot de passe actuel incorrect'
-            ], 401);
+                //  Précision : 403 Forbidden est plus précis ici que 401 (qui est pour le manque de token)
+                'message' => 'Mot de passe actuel incorrect.'
+            ], 403); 
         }
 
         $user->update([
@@ -400,11 +407,22 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Mot de passe modifié avec succès'
-        ]);
+        ], 200);
     }
 
+    /**
+     * ADMIN : Lister tous les utilisateurs (nécessite rôle Admin)
+     */
     public function getUsers(Request $request)
     {
+        //  Correction de Sécurité : Vérification de l'autorisation
+        if ($request->user()->type_utilisateur !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Accès non autorisé.'
+            ], 403); 
+        }
+
         $query = User::with('freelance');
         
         if ($request->has('type')) {
@@ -420,18 +438,41 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'data' => $users
-        ]);
+        ], 200);
     }
 
+    /**
+     * ADMIN : Mettre à jour le statut d'un utilisateur (nécessite rôle Admin)
+     */
     public function updateUserStatus(Request $request, $id)
     {
+        //  Correction de Sécurité : Vérification de l'autorisation
+        if ($request->user()->type_utilisateur !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Accès non autorisé.'
+            ], 403); 
+        }
+
+        $validator = Validator::make($request->all(), [
+            'statut' => 'required|in:actif,suspendu,banni', // Ajout d'une validation pour le statut
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         $user = User::findOrFail($id);
         $user->statut = $request->statut;
         $user->save();
         
         return response()->json([
             'success' => true,
-            'message' => 'Statut mis à jour'
-        ]);
+            'message' => 'Statut mis à jour',
+            'data' => $user
+        ], 200);
     }
 }

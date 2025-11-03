@@ -8,15 +8,20 @@ use App\Models\Project as Projet;
 use App\Models\Utilisateur as User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log; // Ajout pour le logging
 use App\Services\NotificationService;
+
+// NOTE IMPORTANTE : Ce contrôleur suppose que toutes les routes
+// sont protégées par le middleware 'auth:sanctum' ou équivalent.
 
 class ProjetController extends Controller
 {
     /**
-     * Liste des projets avec filtres
+     * Liste des projets publics (ouverts) avec filtres
      */
     public function index(Request $request)
     {
+        // Les requêtes sont sécurisées contre l'injection SQL grâce à Eloquent (requêtes préparées)
         $query = Projet::with(['client'])
             ->where('statut', 'ouvert');
 
@@ -29,9 +34,11 @@ class ProjetController extends Controller
             $query->where('ville', $request->ville);
         }
 
+        // 💡 Amélioration: utilisation de where('titre', 'like', $recherche) est sécurisé par Eloquent
         if ($request->has('recherche')) {
             $recherche = $request->recherche;
             $query->where(function($q) use ($recherche) {
+                // Utilisation sécurisée des wildcards % dans Eloquent
                 $q->where('titre', 'like', "%{$recherche}%")
                   ->orWhere('description', 'like', "%{$recherche}%");
             });
@@ -43,7 +50,7 @@ class ProjetController extends Controller
         return response()->json([
             'success' => true,
             'data' => $projets
-        ]);
+        ], 200);
     }
 
     /**
@@ -51,15 +58,25 @@ class ProjetController extends Controller
      */
     public function show($id)
     {
-        $projet = Projet::with(['client'])->findOrFail($id);
+        try {
+            // findOrFail renverra automatiquement une réponse 404 si non trouvé
+            $projet = Projet::with(['client'])->findOrFail($id);
 
-        // Incrémenter les vues
-        $projet->incrementerVues();
+            // Incrémenter les vues (Assurez-vous que la méthode existe sur le modèle Projet)
+            if (method_exists($projet, 'incrementerVues')) {
+                $projet->incrementerVues();
+            }
 
-        return response()->json([
-            'success' => true,
-            'data' => $projet
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => $projet
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Projet introuvable.'
+            ], 404);
+        }
     }
 
     /**
@@ -69,11 +86,12 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
+        // 🛡️ Protection (Policy): Vérification du type d'utilisateur
         if ($user->type_utilisateur !== 'client') {
             return response()->json([
                 'success' => false,
                 'message' => 'Seuls les clients peuvent publier des projets'
-            ], 403);
+            ], 403); // 403 Forbidden
         }
 
         $validator = Validator::make($request->all(), [
@@ -81,7 +99,8 @@ class ProjetController extends Controller
             'description' => 'required|string',
             'categorie' => 'required|string|max:100',
             'budget_minimum' => 'nullable|numeric|min:0',
-            'budget_maximum' => 'nullable|numeric|min:0',
+            // 💡 Ajout : Assurer que le maximum est supérieur ou égal au minimum si les deux sont présents
+            'budget_maximum' => 'nullable|numeric|min:0|gte:budget_minimum',
             'ville' => 'nullable|string|max:100',
             'delai_souhaite' => 'nullable|string|max:100',
         ]);
@@ -93,37 +112,36 @@ class ProjetController extends Controller
             ], 422);
         }
 
-        $projet = Projet::create([
-            'client_id' => $user->id,
-            'titre' => $request->titre,
-            'description' => $request->description,
-            'categorie' => $request->categorie,
-            'budget_minimum' => $request->budget_minimum,
-            'budget_maximum' => $request->budget_maximum,
-            'ville' => $request->ville,
-            'delai_souhaite' => $request->delai_souhaite,
-            'statut' => 'ouvert',
-        ]);
+        try {
+            $projet = Projet::create([
+                'client_id' => $user->id,
+                'titre' => $request->titre,
+                'description' => $request->description,
+                'categorie' => $request->categorie,
+                'budget_minimum' => $request->budget_minimum,
+                'budget_maximum' => $request->budget_maximum,
+                'ville' => $request->ville,
+                'delai_souhaite' => $request->delai_souhaite,
+                'statut' => 'ouvert',
+            ]);
 
-        //  $freelanceCategory = $projet->categorie;
-        // $freelancers = User::where('type_utilisateur', 'freelance')
-        //     ->whereHas('competences', fn($q) => $q->where('categorie', $freelanceCategory))
-        //     ->limit(50)
-        //     ->pluck('id');
+            // ... Logique de notification commentée ...
 
-        // NotificationService::create($freelancers->toArray(),
-        //     "Nouveau projet disponible: {$projet->titre}",
-        //     "Un nouveau projet dans votre domaine de compétence a été publié",
-        //     'projet',
-        //     ['project_id' => $projet->id]
-        // );
+            return response()->json([
+                'success' => true,
+                'message' => 'Projet publié avec succès',
+                'data' => $projet
+            ], 201); // 201 Created
 
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Projet publié avec succès',
-            'data' => $projet
-        ], 201);
+        } catch (\Exception $e) {
+            Log::error("Erreur lors de la création du projet par le client {$user->id}: " . $e->getMessage());
+            
+            // 🛡️ Sécurité : Ne pas exposer les erreurs internes
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur interne est survenue lors de la publication du projet.'
+            ], 500);
+        }
     }
 
     /**
@@ -133,14 +151,24 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        $projet = Projet::where('client_id', $user->id)->findOrFail($id);
-
+        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        try {
+            $projet = Projet::where('client_id', $user->id)->findOrFail($id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            // Renvoie 403 si l'utilisateur essaie de modifier un projet qui ne lui appartient pas (ou 404 si l'ID n'existe pas)
+            return response()->json([
+                'success' => false,
+                'message' => 'Projet introuvable ou vous n\'avez pas les permissions pour le modifier.'
+            ], 404);
+        }
+        
+        // 💡 Validation améliorée pour permettre les mises à jour partielles
         $validator = Validator::make($request->all(), [
             'titre' => 'sometimes|string|max:200',
             'description' => 'sometimes|string',
             'categorie' => 'sometimes|string|max:100',
             'budget_minimum' => 'nullable|numeric|min:0',
-            'budget_maximum' => 'nullable|numeric|min:0',
+            'budget_maximum' => 'nullable|numeric|min:0|gte:budget_minimum', // Validation gte:budget_minimum s'applique
             'ville' => 'nullable|string|max:100',
             'delai_souhaite' => 'nullable|string|max:100',
             'statut' => 'sometimes|in:ouvert,en_cours,termine,annule',
@@ -153,13 +181,23 @@ class ProjetController extends Controller
             ], 422);
         }
 
-        $projet->update($request->all());
+        try {
+            // Utilisez $request->validated() pour n'appliquer que les champs validés
+            $projet->update($validator->validated()); 
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Projet mis à jour avec succès',
-            'data' => $projet->fresh()
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Projet mis à jour avec succès',
+                'data' => $projet->fresh()
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error("Erreur lors de la mise à jour du projet {$id} par le client {$user->id}: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur interne est survenue lors de la mise à jour.'
+            ], 500);
+        }
     }
 
     /**
@@ -169,14 +207,22 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        $projet = Projet::where('client_id', $user->id)->findOrFail($id);
+        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        try {
+            $projet = Projet::where('client_id', $user->id)->findOrFail($id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Projet introuvable ou vous n\'avez pas les permissions pour le supprimer.'
+            ], 404);
+        }
 
         $projet->delete();
 
         return response()->json([
             'success' => true,
             'message' => 'Projet supprimé avec succès'
-        ]);
+        ], 200);
     }
 
     /**
@@ -186,6 +232,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
+        // 🛡️ Protection : seul le client peut voir "ses" projets
         if ($user->type_utilisateur !== 'client') {
             return response()->json([
                 'success' => false,
@@ -200,7 +247,7 @@ class ProjetController extends Controller
         return response()->json([
             'success' => true,
             'data' => $projets
-        ]);
+        ], 200);
     }
 
     /**
@@ -210,7 +257,23 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        $projet = Projet::where('client_id', $user->id)->findOrFail($id);
+        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        try {
+            $projet = Projet::where('client_id', $user->id)->findOrFail($id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Projet introuvable ou vous n\'avez pas les permissions pour le clôturer.'
+            ], 404);
+        }
+
+        // Vérification de l'état actuel pour plus de robustesse
+        if ($projet->statut === 'termine' || $projet->statut === 'annule') {
+             return response()->json([
+                'success' => false,
+                'message' => "Le projet est déjà {$projet->statut}."
+            ], 400); // 400 Bad Request
+        }
 
         $projet->update([
             'statut' => 'termine',
@@ -221,6 +284,7 @@ class ProjetController extends Controller
             'success' => true,
             'message' => 'Projet clôturé avec succès',
             'data' => $projet
-        ]);
+        ], 200);
     }
 }
+
