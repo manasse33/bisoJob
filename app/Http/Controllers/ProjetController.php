@@ -86,7 +86,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        // 🛡️ Protection (Policy): Vérification du type d'utilisateur
+        //  Protection (Policy): Vérification du type d'utilisateur
         if ($user->type_utilisateur !== 'client') {
             return response()->json([
                 'success' => false,
@@ -136,7 +136,7 @@ class ProjetController extends Controller
         } catch (\Exception $e) {
             Log::error("Erreur lors de la création du projet par le client {$user->id}: " . $e->getMessage());
             
-            // 🛡️ Sécurité : Ne pas exposer les erreurs internes
+            //  Sécurité : Ne pas exposer les erreurs internes
             return response()->json([
                 'success' => false,
                 'message' => 'Une erreur interne est survenue lors de la publication du projet.'
@@ -151,7 +151,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        //  IDOR Protection : Vérifie si le projet appartient bien au client connecté
         try {
             $projet = Projet::where('client_id', $user->id)->findOrFail($id);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -207,7 +207,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        //  IDOR Protection : Vérifie si le projet appartient bien au client connecté
         try {
             $projet = Projet::where('client_id', $user->id)->findOrFail($id);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -232,7 +232,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        // 🛡️ Protection : seul le client peut voir "ses" projets
+        //  Protection : seul le client peut voir "ses" projets
         if ($user->type_utilisateur !== 'client') {
             return response()->json([
                 'success' => false,
@@ -257,7 +257,7 @@ class ProjetController extends Controller
     {
         $user = $request->user();
         
-        // 🛡️ IDOR Protection : Vérifie si le projet appartient bien au client connecté
+        // IDOR Protection : Vérifie si le projet appartient bien au client connecté
         try {
             $projet = Projet::where('client_id', $user->id)->findOrFail($id);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {

@@ -255,18 +255,18 @@ class AuthController extends Controller
         }
 
         //  Précision : La vérification d'email est commentée. Je vous recommande de la réactiver.
-        /*
-        if (!$user->hasVerifiedEmail()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Veuillez vérifier votre email avant de vous connecter.',
-                'data' => [
-                    'email_verified' => false,
-                    'email' => $user->email
-                ]
-            ], 403); // 403 Forbidden
-        }
-        */
+        
+        // if (!$user->hasVerifiedEmail()) {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Veuillez vérifier votre email avant de vous connecter.',
+        //         'data' => [
+        //             'email_verified' => false,
+        //             'email' => $user->email
+        //         ]
+        //     ], 403);
+        // }
+        
 
         if ($user->statut !== 'actif') {
             return response()->json([

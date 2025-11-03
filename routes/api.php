@@ -42,7 +42,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/resend-verification-email', [AuthController::class, 'resendVerificationEmail']);
     });
     
-    // 💡 LECTURE PUBLIQUE (Ne nécessite PAS d'authentification)
+    //  LECTURE PUBLIQUE (Ne nécessite PAS d'authentification)
     
     // Freelances
     Route::get('/freelances', [FreelanceController::class, 'index']);
@@ -71,7 +71,7 @@ Route::prefix('v1')->group(function () {
 });
 
 
-// 🔒 GROUPE V1 : Routes Protégées (Nécessitent auth:sanctum) 
+// GROUPE V1 : Routes Protégées (Nécessitent auth:sanctum) 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     
     // AUTHENTIFICATION ET PROFIL
