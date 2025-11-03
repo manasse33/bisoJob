@@ -246,33 +246,30 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        //  Correction : Utiliser un message générique pour les identifiants
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Identifiants (Email ou mot de passe) incorrects.'
-            ], 401); // 401 Unauthorized
+                'message' => 'Email ou mot de passe incorrect'
+            ], 401);
         }
 
-        //  Précision : La vérification d'email est commentée. Je vous recommande de la réactiver.
-        
+        // VÉRIFIER SI L'EMAIL EST VÉRIFIÉ
         // if (!$user->hasVerifiedEmail()) {
         //     return response()->json([
         //         'success' => false,
-        //         'message' => 'Veuillez vérifier votre email avant de vous connecter.',
+        //         'message' => 'Veuillez vérifier votre email avant de vous connecter. Un email de vérification a été envoyé à votre adresse.',
         //         'data' => [
         //             'email_verified' => false,
         //             'email' => $user->email
         //         ]
         //     ], 403);
         // }
-        
 
         if ($user->statut !== 'actif') {
             return response()->json([
                 'success' => false,
                 'message' => 'Votre compte est ' . $user->statut
-            ], 403); // 403 Forbidden
+            ], 403);
         }
 
         // Mettre à jour la dernière connexion
@@ -286,14 +283,15 @@ class AuthController extends Controller
             'message' => 'Connexion réussie',
             'data' => [
                 'user' => $user->load([
-                    'freelance.competences',
-                    'freelance.portofolios'
-                ]),
+    'freelance.competences',
+    'freelance.portofolios'
+]),
+
                 'token' => $token,
                 'token_type' => 'Bearer',
-                'email_verified' => $user->hasVerifiedEmail(), // Utiliser la vraie méthode
+                'email_verified' => true,
             ]
-        ], 200);
+        ]);
     }
 
     /**
